@@ -1,11 +1,13 @@
-Code and arxiv link will appear soon!
+Code will appear soon!
 
 ```bibtex
-@misc{kim2026ehrl,
-  title        = {Experience-Handoff Reinforcement Learning for Recursive Self-Improvement},
-  author       = {Kim, Doyoung and Jeon, Byeongguk and Zhang, Kailin and Yang, Sherry},
-  year         = {2026},
-  howpublished = {\url{https://github.com/doyoungkim-ml/ehrl}},
-  note         = {GitHub repository}
+@misc{kim2026experiencehandoffreinforcementlearningrecursive,
+      title={Experience-Handoff Reinforcement Learning for Recursive Self-Improvement}, 
+      author={Doyoung Kim and Byeongguk Jeon and Kailin Zhang and Sherry Yang},
+      year={2026},
+      eprint={2611.16409},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2611.16409}, 
 }
 ```
