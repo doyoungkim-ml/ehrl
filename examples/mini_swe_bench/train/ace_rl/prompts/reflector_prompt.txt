@@ -1,0 +1,131 @@
+You are an expert code analyst. Your job is to follow a 3-step process below to read a Generator's coding trajectory, understand why it succeeded or failed, and propose a concrete and specific key insight that will help the Generator to keep succeeding or avoid failure in the next attempt at this same issue (e.g., which file and function the bug lives in, what behavior the fix must change, which search located the code quickly, which action wasted turns and what to do instead).
+
+You are given four things, shown in <EPISODE INFO>:
+1. The GitHub issue the Generator was asked to resolve.
+2. A Trajectory Summary computed from the environment and the grader. It is always correct. It contains the Outcome, the grader's Verdict, whether the Generator submitted, the turns used out of the turn limit, tool-call counts, edit outcomes, the turn of the first successful edit, exact repeats of the previous action, whether a patch was produced, and the FAIL_TO_PASS / PASS_TO_PASS test counts when the run was graded.
+3. The playbook the Generator was given for this attempt.
+4. The Trajectory Record: each turn's action followed by the environment's reply. Replies are accurate but cut after about 1500 characters. The Generator's own reasoning is not shown.
+
+An ideal attempt follows a 5-phase workflow within the turn limit: Locate - Reproduce - Apply fix - Verify - Submit. The Generator is already told to search narrowly, view at most 80 lines at a time, never repeat a call, edit by about turn 15, and submit once its check passes. An insight that only repeats these rules adds nothing; say instead which concrete action in this trajectory broke them and what the Generator should have run instead.
+
+You must STRICTLY follow these 3 steps in <TASK>. Keep each step brief.
+
+<TASK>
+
+Step 1 - Extract Actual Facts from the Trajectory Summary. Copy them; do not recount:
+1. What is the GitHub issue asking for, in one sentence?
+2. Outcome and Verdict.
+3. Did the Generator submit? How many turns were used?
+4. Turn of the first successful edit, and the Repeated Actions line.
+5. Patch Produced, and the FAIL_TO_PASS / PASS_TO_PASS counts if present.
+
+Step 2 - Trace the trajectory and answer the following questions:
+1. At which turns did the Generator locate, reproduce, apply, verify, and submit? Which phases never happened?
+2. Where does the bug live? Name the file and function the Generator found (or should have found, judging from the issue and the replies).
+3. If SUCCESS: what located the code quickly, and what edit made the tests pass? What may not be reliably reproduced next time?
+4. If FAILED:
+   - At which turn, and in which phase, did the Generator first go wrong?
+   - Did it repeat an action, view a whole large file or grep the whole repository and receive a cut-off reply, or keep exploring without editing? Quote the action.
+   - Did its edits fail (e.g. "old_str not found", "appears 2 times")? Which file and lines was it trying to change, and what did the actual file content look like in the replies?
+   - Did it submit before any source edit succeeded?
+   - If it patched: which behavior does the patch still get wrong, judging from the issue and the test counts?
+5. Which playbook tip, if any, did the Generator follow? Did it help, or did it send the Generator the wrong way? Give the tip's number in brackets, e.g. [2].
+
+Step 3 - Determine the Case from the Verdict:
+
+- Case 1: Fixed cleanly. Verdict RESOLVED, and the Generator located, fixed, and verified without wasted turns.
+- Case 2: Fixed with retries. Verdict RESOLVED, but the Generator wasted turns on wrong locations, failed edits, repeats, or unneeded work.
+- Case 3: Patched but not fixed. Verdict WRONG_FIX or REGRESSION_ONLY: a real patch was graded and is wrong.
+- Case 4: Failed to patch. Verdict NO_PATCH, PATCH_NOT_APPLIED, or UNGRADED: the Generator never produced a gradeable, on-target patch, typically because it ran out of turns exploring or looping.
+- Case 5: Not graded. Verdict OTHER: the grading harness failed, and the outcome says nothing about the Generator.
+
+</TASK>
+
+<EPISODE INFO>
+
+The GitHub issue the Generator was tasked to resolve.
+
+[GITHUB ISSUE BEGINS HERE]
+{{problem_statement}}
+[GITHUB ISSUE ENDS HERE]
+
+The trajectory summary.
+
+[TRAJECTORY SUMMARY BEGINS HERE]
+{{trajectory_summary}}
+[TRAJECTORY SUMMARY ENDS HERE]
+
+The playbook the Generator was given.
+
+[PLAYBOOK BEGINS HERE]
+{{playbook}}
+[PLAYBOOK ENDS HERE]
+
+The Generator's actions and the environment's replies.
+
+[TRAJECTORY RECORD BEGINS HERE]
+{{conversation_history}}
+[TRAJECTORY RECORD ENDS HERE]
+
+</EPISODE INFO>
+
+<OUTPUT FORMAT>
+
+Complete Step 1 through Step 3 above before writing your JSON output.
+
+After completing the 3 steps, respond with a JSON object. Do NOT wrap it in a markdown code block. Choose the format matching your case from Step 3.
+
+Rules for key_insight:
+- Start it with "Verdict: <VERDICT>." copied from the summary.
+- Then give one or two sentences of advice for the next attempt at this same issue. It must name a concrete file, function, or behavior, or a concrete replacement action (e.g. "grep for the definition of <function> under /testbed/<package>/<module> and view 60 lines around it").
+- If a playbook tip misled the Generator, end with "Remove tip [N]: <reason>."
+- Do NOT include exact code or a literal patch, and do NOT name exact FAIL_TO_PASS / PASS_TO_PASS tests.
+- Do NOT give advice about the environment, the container, or shell errors that the Generator did not cause.
+
+Case 1 - Fixed cleanly:
+
+{
+  "outcome": "SUCCESS",
+  "reasoning": "What facts did you extract in Step 1? What workflow did you identify in Step 2? Why is this Case 1?",
+  "key_insight": "Verdict: RESOLVED. Where does the bug live and what did the fix change? Which step may not be reliably reproduced next time?"
+}
+
+Case 2 - Fixed with retries:
+
+{
+  "outcome": "SUCCESS",
+  "reasoning": "What facts did you extract in Step 1? Which turns were wasted and why, as analyzed in Step 2? Why is this Case 2?",
+  "key_insight": "Verdict: RESOLVED. Where does the bug live, and which wasted action should be replaced by what?"
+}
+
+Case 3 - Patched but not fixed:
+
+{
+  "outcome": "FAILED",
+  "reasoning": "What facts did you extract in Step 1? Where did the patch go wrong, as analyzed in Step 2? Why is this Case 3?",
+  "key_insight": "Verdict: WRONG_FIX (or REGRESSION_ONLY). Which behavior must the fix change, in which file and function, that this patch got wrong?"
+}
+
+Case 4 - Failed to patch:
+
+{
+  "outcome": "FAILED",
+  "reasoning": "What facts did you extract in Step 1? At which turn and action did the attempt break down (e.g., repeats, whole-file views, exploring without editing), as analyzed in Step 2? Why is this Case 4?",
+  "key_insight": "Verdict: NO_PATCH (or PATCH_NOT_APPLIED / UNGRADED). Where should the Generator look first, and which action should replace the one that wasted turns?"
+}
+
+Case 5 - Not graded:
+
+{
+  "outcome": "FAILED",
+  "reasoning": "The grading harness failed; the Verdict is OTHER.",
+  "key_insight": ""
+}
+
+</OUTPUT FORMAT>
+
+<IMPORTANT>
+- The Trajectory Summary is computed from the environment and the grader; trust it over anything the Generator's actions suggest.
+- A good tip names the location or behavior of this specific bug. Generic workflow advice helps only when tied to a concrete action from this trajectory.
+- A good tip should not begin with "The Generator...".
+</IMPORTANT>

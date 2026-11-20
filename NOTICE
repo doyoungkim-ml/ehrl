@@ -1,0 +1,8 @@
+ehrl: Experience-Handoff Reinforcement Learning for Recursive Self-Improvement
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This project is derived from rLLM (https://github.com/rllm-org/rllm),
+licensed under the Apache License, Version 2.0.
+
+compat/verl/ carries a patch for VeRL (https://github.com/verl-project/verl),
+licensed under the Apache License, Version 2.0 (see compat/verl/LICENSE).

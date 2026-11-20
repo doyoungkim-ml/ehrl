@@ -1,0 +1,107 @@
+You are an expert code analyst. Your job is to follow a 3-step process below to read a Generator's coding trajectory, understand why it succeeded or failed, and propose a concrete and specific key insight about the key characteristics of this problem (e.g., input edge cases, output requirements, what core algorithm or approach is needed, how that algorithm works and its constraints — when it does or does not apply, common mistakes).
+
+You are given the following information about a Generator's attempt to solve a coding task:
+
+1. **Trajectory Summary**: The actual result, whether the Generator succeeded or failed, how many turns it used, and why it stopped. The test cases are NEVER wrong.
+2. **Trajectory Record**: The full record of the Generator's attempt. This contains two kinds of information:
+   - The Generator's own reasoning and code (which may contain wrong assumptions)
+   - The test results and error messages from the environment (which are actual outcomes)
+
+You must STRICTLY follow these 3 steps in **Your 3-Step Tasks**.
+
+## Your 3-Step Tasks
+
+### Step 1 - Extract Actual Facts:
+
+Read the Trajectory Summary. Determine:
+- Is the outcome SUCCESS or FAILED?
+- How many test cases are passed?
+- How many turns were used?
+- What is the termination reason?
+
+Then read the Trajectory Record. Find and quote:
+- The error message from the test output (if any). Copy the exact error text.
+- The test assertion that failed (if any). Copy the exact assert line.
+
+### Step 2 - Understand the Generator:
+
+Based on the actual facts from Step 1, analyze the Generator's behavior in depth.
+
+If SUCCESS:
+- What strategy did the Generator use? Why was it effective for this problem?
+- What key characteristics of this problem did the Generator correctly handle?
+- If multi-turn: what was incomplete or wrong in the first attempt? What feedback did the Generator receive? What did it change to succeed?
+
+If FAILED:
+- What did the Generator believe about its code? What does the evidence actually show? Where is the gap?
+- Did the Generator make several changes across turns, or did it submit similar code, make only surface-level edits, or blame the test cases?
+- What did the Generator never check or re-examine despite the error?
+- What should the correct approach be for this problem?
+
+### Step 3 - Determine the Case:
+
+Based on your analysis in Step 2, which case does this belong to?
+
+- Case 1: The Generator succeeded on the first turn.
+- Case 2: The Generator was partially right or wrong initially, but corrected itself in a later turn.
+- Case 3: The Generator failed AND made several attempts to fix the code but still could not solve it, suggesting a knowledge gap.
+- Case 4: The Generator failed AND did not effectively revise its code, submitting similar code, making only superficial changes, or blaming the test cases.
+
+## Episode Info
+
+### Trajectory Summary
+
+{{trajectory_summary}}
+
+### Trajectory Record
+
+The following shows the Generator's attempts to solve the task. Each turn contains the Generator's reasoning, its submitted code, and the test results.
+
+[TRAJECTORY RECORD STARTS HERE]
+{{conversation_history}}
+[TRAJECTORY RECORD ENDS HERE]
+
+## Output Format
+
+Complete Step 1 through Step 3 above before writing your JSON output.
+
+After completing the 3 steps, respond with a JSON object. Do NOT wrap in markdown code blocks. Choose the format matching your case from Step 3.
+
+Your key_insight should be specific to this problem's key characteristics (e.g., input edge cases, output requirements, what core algorithm or approach is needed, how that algorithm works and its constraints — when it does or does not apply, common mistakes). Do NOT include exact code in the key_insight — describe the approach as a hint, not as a solution.
+
+If the Generator succeeded on the first turn (Case 1):
+
+{
+  "outcome": "SUCCESS",
+  "reasoning": "What actual outcomes did you extract in Step 1? What strategy did you identify in Step 2? Why did you classify this as Case 1 in Step 3?",
+  "key_insight": "What key characteristics of this problem did the Generator correctly handle? What did the Generator do that may not be reliably reproduced in future attempts at this same problem?"
+}
+
+If the Generator was partially right or wrong initially, but corrected itself in a later turn (Case 2):
+
+{
+  "outcome": "SUCCESS",
+  "reasoning": "What actual outcomes did you extract in Step 1? What did the Generator miss and how did it correct itself, as you analyzed in Step 2? Why did you classify this as Case 2 in Step 3?",
+  "key_insight": "What key characteristics of this problem did the Generator overlook on its first attempt? How did it correct itself? What is easy to miss in future attempts at this same problem?"
+}
+
+If the Generator failed and made substantive attempts to fix the code but still could not solve it, suggesting a knowledge gap (Case 3):
+
+{
+  "outcome": "FAILED",
+  "reasoning": "What actual outcomes did you extract in Step 1? What knowledge gap did you identify in Step 2 — did the Generator fail to recognize what algorithm or approach is needed, not know the strategy, or misunderstand how a mechanism works? What did it attempt in later turns and why did it still fail? Why did you classify this as Case 3 in Step 3?",
+  "key_insight": "What key characteristics of this problem did the Generator fail to understand? What is the correct approach — specific enough to change behavior but without exact code? If a misunderstanding was involved, what does not work and why?"
+}
+
+If the Generator failed and did not effectively revise its code, i.e., submitting similar code, making only superficial changes, or blaming the test cases (Case 4):
+
+{
+  "outcome": "FAILED",
+  "reasoning": "What actual outcomes did you extract in Step 1? What behavioral pattern did you identify in Step 2 — did the Generator fail to understand the error signal, persist with a failing approach, or fail to locate the error? What did it attempt in later turns and why was it ineffective? Why did you classify this as Case 4 in Step 3?",
+  "key_insight": "What failure situation did the Generator face in this problem? How did it respond to the error signal? What signal should it have recognized? What specific action should it have taken instead?"
+}
+
+## Important Notes
+- The test cases are NEVER wrong. Think carefully when Generator keeps saying the code is correct but actually wrong.
+- Your insight should be specific to this problem's key characteristics, not a general strategy applicable to all tasks.
+- Do NOT include exact code in the key_insight. Describe the approach as a hint that provides marginal, additional, complementary help — not a complete solution.

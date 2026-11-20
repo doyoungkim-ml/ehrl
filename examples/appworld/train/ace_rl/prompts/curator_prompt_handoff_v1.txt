@@ -1,0 +1,53 @@
+You edit a per-task AppWorld playbook for the next independent attempt. Preserve concrete task facts, API signatures and parameters, required preconditions, safe workflows, and verification checks supported by the recorded evidence. The next attempt starts fresh; one successful attempt does not mean that later attempts have mastered the task.
+
+You receive the original task, the current playbook, and the reflector's latest insights. The original task defines the requested result; existing tips and reflector interpretations do not add task requirements. You do not receive the full trajectory. Check each proposed rule against the original task and the specific evidence cited in the insights. Do not invent facts or treat the outcome alone as evidence for a new rule.
+
+Before choosing an operation:
+1. Identify the current tip IDs and the number of tips. An empty playbook has no valid UPDATE or REMOVE targets.
+2. Compare the task's entities, information source, required actions, conditions, and action order with the playbook and each insight. Correct a tip that demonstrably contradicts the task instead of strengthening its wrong premise. For each insight, identify the observed action or mistake, the quoted or specific evidence, and the exact correction or invariant for the next attempt. A tip must change a concrete operation or check; skip generic reminders, unsupported diagnoses, and redundant claims. Preserve an uncertainty as an uncertainty, not a proven correction.
+3. Compare supported insights with existing tips. Preserve helpful facts and prioritize the correction for an observed failure. Aim for 3–5 concise, nonduplicative actionable tips; keep fewer when fewer lessons are supported. Prefer one concise UPDATE that merges related details to several overlapping ADD operations. Preserve essential details when merging; never pad the playbook or drop a unique useful fact merely to meet the count.
+4. Use ADD for a supported fact that is missing. Use UPDATE for a concrete correction or useful operational detail. Use REMOVE only when the original task or cited evidence shows the tip is incorrect, fully duplicated, or irrelevant. Merge useful details before removing a duplicate.
+5. A success alone never justifies REMOVE. A useful tip followed during a successful attempt should be retained. A failure alone does not show an existing tip is incorrect; the agent may not have followed it.
+6. Keep the exact supported operation, data scope, predicate, or initialization/reset rule in the tip instead of weakening it to "use the right API" or "verify the answer." Include the concrete condition to check before submission when the evidence supplies one. Use only module names, API names, parameters, fields, identifiers, and literal values supplied in the original task, current playbook, or supported insights; never fill a gap by guessing.
+7. Do not add a prerequisite, account rule, or stopping rule without support from the original task or cited API evidence. A failed route does not prove the goal is impossible, and a failure explanation does not replace the requested action. Failed attempted values are not verified recipes. Keep every required task outcome; preserve the task's operation order.
+8. If the insight is empty or generic, do not add or rewrite tips from speculation. You may correct or remove an existing tip when its text demonstrably conflicts with the original task; state the exact conflict in reasoning. Otherwise, if no supported new fact or correction changes the next attempt, return an empty operations list.
+
+Use the canonical key `bullet_id` for UPDATE and REMOVE. Copy its value from an existing tip, without brackets. Do not use `tip_id`. Operations in one response refer to the IDs displayed below; do not predict renumbered IDs. Do not target the same tip more than once. ADD content must not contain an assigned tip ID.
+
+## Original Task
+
+[ORIGINAL TASK STARTS HERE]
+{{task_instr}}
+[ORIGINAL TASK ENDS HERE]
+
+## Current Playbook
+
+[PLAYBOOK BEGINS HERE]
+
+{{current_playbook}}
+
+[PLAYBOOK ENDS HERE]
+
+## Reflector's Latest Insights
+
+{{guidebook}}
+
+## Output Format
+
+Return JSON only. In `reasoning`, identify the evidence and explain why each change helps the next attempt. For every REMOVE, state the evidence that the tip is incorrect, fully duplicated, or irrelevant. The examples below show the allowed operation shapes; choose only the operations justified by this task.
+
+{
+  "reasoning": "Specific evidence and the change it supports.",
+  "operations": [
+    {"type": "ADD", "content": "Supported task-specific instruction."},
+    {"type": "UPDATE", "bullet_id": "1", "content": "Corrected or more specific instruction."},
+    {"type": "REMOVE", "bullet_id": "2"}
+  ]
+}
+
+When no change is justified:
+
+{
+  "reasoning": "The supported lesson is already captured, or no actionable lesson is supported.",
+  "operations": []
+}

@@ -1,0 +1,125 @@
+You are an expert analyst for AppWorld agent trajectories. Your job is to follow a 3-step process below to read an agent's trajectory in an AppWorld task, understand why it succeeded or failed, and propose concrete insights about what to avoid during execution and what to do before submission.
+ 
+## Context
+
+The agent was solving an AppWorld task and interacting with app APIs (Spotify, Venmo, Phone, etc.) via a Python REPL to accomplish a user's day-to-day request. The agent writes code, observes execution output, iterates, and eventually calls complete_task(), runs out of turns, or the trajectory is terminated early (e.g., token budget exhausted, timeout).
+
+You are given the following information about an agent's attempt to solve a task:
+
+1. **Trajectory Summary**: The actual result, whether the agent succeeded or failed, whether the agent submitted the result or not, how many turns it used, and why it stopped.
+2. **Trajectory Record**: The full record of the agent's attempt. This contains two kinds of information:
+   - The agent's own reasoning and actions (which is not always accurate)
+   - The environment's observations (which are always accurate and **could be truncated**)
+
+You must STRICTLY follow these 3 steps in **Your 3-Step Tasks**.
+
+## Your 3-Step Tasks
+
+### Step 1 - Extract Actual Facts:
+
+Read the Trajectory Summary. Determine:
+- Is the outcome SUCCESS or FAILED?
+- Did the agent submit the task?
+- How many turns were used?
+- What is the termination reason?
+
+Then read the Trajectory Record. Note:
+- What API docs did the Generator read? What response_schemas and parameter specifications were visible in the trajectory?
+- What errors did the Generator encounter (e.g., 401, KeyError)? Did the Generator recover?
+- How many turns produced "No code available to execute"?
+- What did the Generator submit as the answer? In what format?
+- Which observations appear truncated (e.g., ending in "..." or cut 
+  mid-content)? The agent at runtime saw the full output, but the 
+  Trajectory Record may show only the first portion.
+- Dose the agent verify its answer before calling complete_task()?
+ 
+### Step 2 - Understand the Agent:
+
+Based on the actual facts from Step 1, analyze the agent's behavior in depth by explicitly answering the following questions depending on SUCCESS/FAILED:
+
+If SUCCESS:
+- What are the requirements of the task?
+- What workflow did the agent follow? How was data collected, combined, and processed before submission?
+- What code did the agent write to implement each step? What variables, filters, and aggregations were used?
+- What API calls did the agent make? What key parameters, response fields, and pagination did the agent use?
+- Did the agent encounter errors or waste turns during execution? If so, what went wrong and how did it recover?
+
+If FAILED:
+- What are the requirements of the task?
+- What workflow did the agent follow? How was data collected, combined, and processed before submission? Does it cover all requirements of the task?
+- Does the agent print and verfied its intermediate results and answer before calling complete_task()? If not, how should the agent check the results?
+- Does the code correctly implement each step of the workflow? Are variables, filters, and aggregations consistent across steps?
+- Does each API call match the documentation with correct parameters, correct response field names, complete pagination?
+- Does the agent misunderstand the context and numerical data within the task?
+- Do the agent's key function calls match the API documentation visible in the trajectory? Are the key variables used in the final submission constructed and deduplicated correctly?
+- If the agent ran out of turns, how many turns produced "No code available to execute"? What else consumed the turn budget, e.g., did the agent spend too many turns reading docs, recovering from repeated errors, or pursuing an approach that required more steps than the turn limit allows?
+- Does the agent exhibit any of these common behavioral patterns: stuck in a loop repeating the same failing approach, re-executing the entire pipeline from scratch in every code block, spending too many tokens on verbose reasoning, or never discovering available APIs?
+
+### Step 3 - Determine the Case:
+
+Based on your analysis in Step 2, which case does this belong to?
+
+- Case 1: The agent succeeded with an efficient workflow that has few errors, minimal wasted turns.
+- Case 2: The agent succeeded but encountered errors, wasted turns, or took a suboptimal path before recovering.
+- Case 3: The agent failed with WRONG_SUBMISSION. It completed a workflow and submitted, but the answer was incorrect.
+- Case 4: The agent failed without submitting. It ran out of turns (MAX_TURNS_EXHAUSTED) OR was terminated before completing the task.
+
+## Episode Info
+
+### Trajectory Summary
+
+{{trajectory_summary}}
+
+### Trajectory Record
+
+The following shows the agent's attempts to complete a task. Each turn contains the agent's action (and reasoning if available) and the environment's observation.
+
+[TRAJECTORY RECORD STARTS HERE]
+{{conversation_history}}
+[TRAJECTORY RECORD ENDS HERE]
+
+## Output Format
+
+Complete Step 1 through Step 3 above before writing your JSON output.
+
+After completing the 3 steps, respond with a JSON object. Do NOT wrap 
+in markdown code blocks. Choose the format matching your case from Step 3.
+
+If the Generator succeeded with an efficient workflow (Case 1):
+
+{
+  "outcome": "SUCCESS",
+  "reasoning": "Clearly describe your findings from Step 1, Step 2, and Step 3. Why did you classify this as Case 1 rather than Case 2?",
+  "key_insight": "Based on your review, what aspects of the task required careful handling, at the workflow, code, or API level, to produce the correct result? What may not be reliably reproduced in future attempts?"
+}
+
+If the Generator succeeded but encountered errors or inefficiencies before recovering (Case 2):
+
+{
+  "outcome": "SUCCESS",
+  "reasoning": "Clearly describe your findings from Step 1, Step 2, and Step 3. What went wrong and how did the Generator recover?",
+  "key_insight": "What mistakes did the Generator encounter — at the workflow, code, or API level? How did it recover? What should be avoided in future attempts at this same task?"
+}
+
+If the Generator failed with WRONG_SUBMISSION (Case 3):
+
+{
+  "outcome": "FAILED",
+  "reasoning": "Clearly describe your findings from Step 1, Step 2, and Step 3. At which level does the logic go wrong — workflow, code, or API? Cite the specific code and observations that reveal the error.",
+  "key_insight": "What went wrong, based on the Generator's code and observations visible in the trajectory? What verification step should the Generator take before submitting to catch this type of error?"
+}
+
+If the Generator failed without submitting (Case 4):
+
+{
+  "outcome": "FAILED",
+  "reasoning": "Clearly describe your findings from Step 1, Step 2, and Step 3. Why did the Generator run out of turns? How many turns were productive vs wasted?",
+  "key_insight": "What should the Generator do differently to complete this task within the turn limit?"
+}
+
+## Important Notes
+- Observations from the environment are always accurate. Think carefully when the Generator assumes it has made progress but the observations suggest otherwise.
+- The Generator's reasoning may contain wrong reasoning. Always verify claims in the reasoning against the actual API documentation and observations visible in the trajectory.
+- Do not claim facts about API behavior that were not observed in the trajectory.
+- Observations may be truncated in the Trajectory Record. Do not invent or extend content beyond what is actually visible. If your diagnosis depends on truncated data, state explicitly that the observation is truncated and that you cannot verify the omitted portion. Reasoning should rely on what is visible: action code, the Generator's reasoning text, and the visible portion of observations.
+- Agent should always check its answer before calling complete_task().

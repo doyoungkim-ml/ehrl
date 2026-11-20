@@ -1,0 +1,515 @@
+diff --git a/verl/experimental/separation/ray_trainer.py b/verl/experimental/separation/ray_trainer.py
+index 3f34cdd..2a294eb 100644
+--- a/verl/experimental/separation/ray_trainer.py
++++ b/verl/experimental/separation/ray_trainer.py
+@@ -294,7 +294,7 @@ class SeparateRayPPOTrainer(RayPPOTrainer):
+         self._load_checkpoint()
+         self.checkpoint_manager.update_weights(self.global_steps)
+ 
+-        current_epoch = self.global_steps // len(self.train_dataloader)
++        current_epoch = self._get_start_epoch()
+ 
+         # perform validation before training
+         # currently, we only support validation using the reward_function.
+diff --git a/verl/trainer/ppo/ray_trainer.py b/verl/trainer/ppo/ray_trainer.py
+index 08a4c43..560595e 100644
+--- a/verl/trainer/ppo/ray_trainer.py
++++ b/verl/trainer/ppo/ray_trainer.py
+@@ -953,6 +953,8 @@ class RayPPOTrainer:
+             f.write(str(self.global_steps))
+ 
+     def _load_checkpoint(self):
++        self._dataloader_resume_iterator_finished = None
++        self._dataloader_resume_num_yielded = None
+         if self.config.trainer.resume_mode == "disable":
+             return 0
+ 
+@@ -1004,21 +1006,90 @@ class RayPPOTrainer:
+         # TODO: from remote not implemented yet
+         dataloader_local_path = os.path.join(global_step_folder, "data.pt")
+         if os.path.exists(dataloader_local_path):
+-            steps_per_epoch = len(self.train_dataloader)
+-            at_epoch_boundary = steps_per_epoch > 0 and self.global_steps % steps_per_epoch == 0
+-            if at_epoch_boundary:
+-                print(
+-                    f"Skipping dataloader state restore: global_steps={self.global_steps} "
+-                    f"is at an epoch boundary (steps_per_epoch={steps_per_epoch}). "
+-                    f"The saved state marks the dataloader as exhausted. "
+-                    f"Next epoch will iterate from scratch."
++            dataloader_state_dict = torch.load(dataloader_local_path, weights_only=False)
++            error = f"Invalid dataloader checkpoint at {dataloader_local_path}"
++
++            def require_fields(state, fields):
++                if not isinstance(state, dict) or not fields.issubset(state):
++                    raise ValueError(f"{error}: expected a dict containing {sorted(fields)}")
++                return state
++
++            # Torchdata accepts {} as a no-op and otherwise defers validation to
++            # iter(loader). Check its envelope before mutation or success metadata;
++            # sampler/dataset state payloads remain opaque and are not rewritten.
++            require_fields(dataloader_state_dict, {"_iterator_finished"})
++            if type(dataloader_state_dict["_iterator_finished"]) is not bool:
++                raise ValueError(f"{error}: _iterator_finished must be a bool")
++            sampler_fields = {
++                "_index_sampler_state",
++                "_sampler_iter_state",
++                "_sampler_iter_yielded",
++                "_IterableDataset_len_called",
++                "_shared_seed",
++            }
++            num_workers = self.train_dataloader.num_workers
++            if num_workers == 0:
++                sampler_state = require_fields(
++                    dataloader_state_dict, sampler_fields | {"_num_yielded", "dataset_state", "fetcher_state"}
+                 )
++                delivered_counts = [dataloader_state_dict["_num_yielded"]]
+             else:
+-                dataloader_state_dict = torch.load(dataloader_local_path, weights_only=False)
+-                self.train_dataloader.load_state_dict(dataloader_state_dict)
++                require_fields(dataloader_state_dict, {"_snapshot", "_steps_since_snapshot"})
++                snapshot = require_fields(
++                    dataloader_state_dict["_snapshot"],
++                    {"_snapshot_step", "_last_yielded_worker_id", "_main_snapshot", "_worker_snapshots"},
++                )
++                sampler_state = require_fields(
++                    snapshot["_main_snapshot"], sampler_fields | {"_num_workers", "_base_seed"}
++                )
++                if type(sampler_state["_num_workers"]) is not int or sampler_state["_num_workers"] != num_workers:
++                    raise ValueError(f"{error}: _num_workers does not match the dataloader")
++                worker_states = require_fields(
++                    snapshot["_worker_snapshots"], {f"worker_{i}" for i in range(num_workers)}
++                )
++                for worker_id in range(num_workers):
++                    worker = require_fields(
++                        worker_states[f"worker_{worker_id}"], {"worker_id", "dataset_state", "fetcher_state"}
++                    )
++                    if type(worker["worker_id"]) is not int or worker["worker_id"] != worker_id:
++                        raise ValueError(f"{error}: invalid worker_id")
++                last_worker = snapshot["_last_yielded_worker_id"]
++                if type(last_worker) is not int or not 0 <= last_worker < num_workers:
++                    raise ValueError(f"{error}: invalid _last_yielded_worker_id")
++                delivered_counts = [snapshot["_snapshot_step"], dataloader_state_dict["_steps_since_snapshot"]]
++            if any(
++                type(count) is not int or count < 0
++                for count in delivered_counts + [sampler_state["_sampler_iter_yielded"]]
++            ):
++                raise ValueError(f"{error}: progress counts must be nonnegative integers")
++
++            self.train_dataloader.load_state_dict(dataloader_state_dict)
++            # Keep sampler/dataset state even at a boundary. Torchdata only marks
++            # an iterator finished after StopIteration, not after its last batch.
++            self._dataloader_resume_iterator_finished = dataloader_state_dict["_iterator_finished"]
++            # Count delivered batches, not prefetched sampler indices. Worker
++            # snapshots can lag the delivered position by _steps_since_snapshot.
++            self._dataloader_resume_num_yielded = sum(delivered_counts)
+         else:
+             print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
+ 
++    def _get_start_epoch(self):
++        """Align the epoch loop with the restored iterator (one batch per PPO step)."""
++        steps_per_epoch = len(self.train_dataloader)
++        current_epoch = self.global_steps // steps_per_epoch
++        if (
++            self.global_steps > 0
++            and self.global_steps % steps_per_epoch == 0
++            and getattr(self, "_dataloader_resume_iterator_finished", None) is False
++            and getattr(self, "_dataloader_resume_num_yielded", None) == steps_per_epoch
++        ):
++            # Resume the empty tail of the saved epoch first. Its natural
++            # StopIteration advances the sampler without discarding a new batch.
++            # A state already marked finished auto-advances on iter(loader), so
++            # it must instead retain the next epoch number computed above.
++            current_epoch -= 1
++        return current_epoch
++
+     def _start_profiling(self, do_profile: bool) -> None:
+         """Start profiling for all worker groups if profiling is enabled."""
+         if do_profile:
+@@ -1302,7 +1373,7 @@ class RayPPOTrainer:
+         self._load_checkpoint()
+         self.checkpoint_manager.update_weights(self.global_steps)
+ 
+-        current_epoch = self.global_steps // len(self.train_dataloader)
++        current_epoch = self._get_start_epoch()
+ 
+         # perform validation before training
+         # currently, we only support validation using the reward_function.
+diff --git a/tests/trainer/ppo/test_dataloader_resume_on_cpu.py b/tests/trainer/ppo/test_dataloader_resume_on_cpu.py
+new file mode 100644
+index 0000000..843b573
+--- /dev/null
++++ b/tests/trainer/ppo/test_dataloader_resume_on_cpu.py
+@@ -0,0 +1,373 @@
++# Copyright 2026 Bytedance Ltd. and/or its affiliates
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++"""Exercise real checkpoint loading and epoch control without Ray/GPU imports.
++
++AST extraction keeps the production _load_checkpoint method unchanged. Only the
++model-compute body of fit's nested dataloader loop is replaced by a batch recorder;
++its epoch expression, bounds, and actual StatefulDataLoader iteration are retained.
++"""
++
++import ast
++import copy
++import os
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++import torch
++from torchdata.stateful_dataloader import StatefulDataLoader
++from torchdata.stateful_dataloader.sampler import RandomSampler
++
++ROOT = Path(__file__).resolve().parents[3]
++MAIN_TRAINER = ROOT / "verl/trainer/ppo/ray_trainer.py"
++SEPARATE_TRAINER = ROOT / "verl/experimental/separation/ray_trainer.py"
++
++
++def _load_cpu_trainer(path=MAIN_TRAINER):
++    source = ast.parse(MAIN_TRAINER.read_text())
++    trainer = next(node for node in source.body if isinstance(node, ast.ClassDef) and node.name == "RayPPOTrainer")
++    methods = [
++        copy.deepcopy(node)
++        for node in trainer.body
++        if isinstance(node, ast.FunctionDef) and node.name in {"_load_checkpoint", "_get_start_epoch"}
++    ]
++    fit_source = ast.parse(path.read_text())
++    cls = next(
++        node for node in fit_source.body if isinstance(node, ast.ClassDef) and node.name.endswith("RayPPOTrainer")
++    )
++    fit = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "fit")
++    epoch_assignment = next(
++        node
++        for node in fit.body
++        if isinstance(node, ast.Assign)
++        and any(isinstance(t, ast.Name) and t.id == "current_epoch" for t in node.targets)
++    )
++    epoch_loop = copy.deepcopy(
++        next(node for node in fit.body if isinstance(node, ast.For) and node.target.id == "epoch")
++    )
++    batch_loop = next(node for node in epoch_loop.body if isinstance(node, ast.For))
++    batch_loop.body = ast.parse("observed.append((epoch, batch_dict.tolist()))").body
++    epoch_loop.body = [batch_loop]
++    fit_stub = ast.parse("def collect(self):\n    pass\n").body[0]
++    fit_stub.body = [
++        ast.parse("observed = []").body[0],
++        copy.deepcopy(epoch_assignment),
++        epoch_loop,
++        ast.parse("return observed").body[0],
++    ]
++    methods.append(fit_stub)
++    module = ast.Module(body=methods, type_ignores=[])
++    namespace = {"os": os, "torch": torch, "Role": SimpleNamespace(Critic="critic")}
++    checkpoint_source = ast.parse((ROOT / "verl/utils/checkpoint/checkpoint_manager.py").read_text())
++    checkpoint_functions = [
++        node
++        for node in checkpoint_source.body
++        if isinstance(node, ast.FunctionDef)
++        and node.name in {"find_latest_ckpt_path", "get_checkpoint_tracker_filename"}
++    ]
++    exec(compile(ast.Module(body=checkpoint_functions, type_ignores=[]), "checkpoint_manager.py", "exec"), namespace)
++    exec(compile(ast.fix_missing_locations(module), str(path), "exec"), namespace)
++    return type("CpuTrainer", (), {node.name: namespace[node.name] for node in methods})
++
++
++class _Actor:
++    def __init__(self):
++        self.loads = []
++
++    def load_checkpoint(self, path, del_local_after_load):
++        assert Path(path).is_dir()
++        self.loads.append((path, del_local_after_load))
++
++
++def _make_loader(*, workers=0, drop_last=True, size=11, persistent=False, snapshot=1):
++    dataset = list(range(size))
++    sampler = RandomSampler(dataset, generator=torch.Generator().manual_seed(42))
++    return StatefulDataLoader(
++        dataset,
++        sampler=sampler,
++        batch_size=3,
++        drop_last=drop_last,
++        num_workers=workers,
++        persistent_workers=persistent,
++        snapshot_every_n_steps=snapshot,
++    )
++
++
++def _prepare_resume(tmp_path, state, loader, steps, total_epochs=4, path=MAIN_TRAINER):
++    checkpoint = tmp_path / f"global_step_{steps}"
++    (checkpoint / "actor").mkdir(parents=True)
++    if state is not None:
++        torch.save(state, checkpoint / "data.pt")
++    (tmp_path / "latest_checkpointed_iteration.txt").write_text(str(steps))
++    trainer = _load_cpu_trainer(path)()
++    trainer.config = SimpleNamespace(
++        trainer=SimpleNamespace(
++            resume_mode="resume_path",
++            default_hdfs_dir=None,
++            default_local_dir=str(tmp_path),
++            resume_from_path=str(checkpoint),
++            del_local_ckpt_after_load=False,
++            total_epochs=total_epochs,
++        )
++    )
++    trainer.global_steps = 0
++    trainer.train_dataloader = loader
++    trainer.actor_rollout_wg = _Actor()
++    trainer.use_critic = False
++    return trainer
++
++
++def _resume(tmp_path, state, loader, steps, total_epochs=4, path=MAIN_TRAINER):
++    trainer = _prepare_resume(tmp_path, state, loader, steps, total_epochs, path)
++    trainer._load_checkpoint()
++    assert trainer.global_steps == steps
++    assert trainer.actor_rollout_wg.loads == [(str(tmp_path / f"global_step_{steps}" / "actor"), False)]
++    return trainer
++
++
++@pytest.mark.parametrize("path", [MAIN_TRAINER, SEPARATE_TRAINER], ids=["ppo", "separate"])
++def test_boundary_resume_preserves_future_sample_order(tmp_path, path):
++    loader = _make_loader()
++    list(loader)  # Checkpoint in the second data epoch, not the initial shuffle.
++    iterator = iter(loader)
++    for _ in range(len(loader)):
++        next(iterator)
++    state = copy.deepcopy(loader.state_dict())
++    assert state["_iterator_finished"] is False
++    assert list(iterator) == []
++    expected = [(epoch, batch.tolist()) for epoch in range(2, 4) for batch in loader]
++    trainer = _resume(tmp_path, state, _make_loader(), steps=2 * len(loader), path=path)
++    assert trainer.collect() == expected
++
++
++@pytest.mark.parametrize(
++    "worker_config",
++    [
++        {"workers": 0},
++        {"workers": 2},
++        {"workers": 2, "persistent": True},
++        {"workers": 2, "snapshot": 5},
++        {"workers": 2, "persistent": True, "snapshot": 5},
++    ],
++    ids=["single", "multi", "persistent", "stale-snapshot", "persistent-stale-snapshot"],
++)
++@pytest.mark.parametrize("drop_last", [False, True])
++@pytest.mark.parametrize("size", [3, 11, 12])
++@pytest.mark.parametrize("saved_epoch", [0, 2])
++@pytest.mark.parametrize("position", ["initial", "mid", "last", "finished"])
++def test_resume_matrix(tmp_path, worker_config, drop_last, size, saved_epoch, position):
++    kwargs = dict(worker_config, drop_last=drop_last, size=size)
++    loader = _make_loader(**kwargs)
++    for _ in range(saved_epoch):
++        list(loader)
++    iterator = iter(loader)
++    count = {"initial": 0, "mid": max(1, len(loader) // 2), "last": len(loader), "finished": len(loader)}[position]
++    for _ in range(count):
++        next(iterator)
++    if position == "finished":
++        assert list(iterator) == []
++    state = copy.deepcopy(loader.state_dict())
++    assert state["_iterator_finished"] is (position == "finished")
++    expected = [(saved_epoch, batch.tolist()) for batch in iterator]
++    expected.extend((epoch, batch.tolist()) for epoch in range(saved_epoch + 1, saved_epoch + 3) for batch in loader)
++    restored = _make_loader(**kwargs)
++    rng_before_load = restored.sampler.generator.get_state().clone()
++    trainer = _resume(tmp_path, state, restored, steps=saved_epoch * len(loader) + count, total_epochs=saved_epoch + 3)
++    # Restoration must stay lazy: no eager iter(), next(), or permutation advance.
++    assert torch.equal(restored.sampler.generator.get_state(), rng_before_load)
++    assert trainer._dataloader_resume_iterator_finished is (position == "finished")
++    actual = trainer.collect()
++    assert actual == expected
++    assert torch.equal(restored.sampler.generator.get_state(), loader.sampler.generator.get_state())
++
++
++@pytest.mark.parametrize("workers", [0, 2])
++def test_modulo_boundary_does_not_discard_mid_epoch_state(tmp_path, workers):
++    loader = _make_loader(workers=workers)
++    for _ in range(2):
++        list(loader)
++    iterator = iter(loader)
++    next(iterator)
++    state = copy.deepcopy(loader.state_dict())
++    expected = [batch.tolist() for batch in iterator]
++    # An optimizer-step modulo is not a data boundary when batches were rejected.
++    trainer = _resume(tmp_path, state, _make_loader(workers=workers), steps=len(loader))
++    assert [batch.tolist() for batch in trainer.train_dataloader] == expected
++
++
++@pytest.mark.parametrize("path", [MAIN_TRAINER, SEPARATE_TRAINER], ids=["ppo", "separate"])
++def test_missing_data_state_keeps_existing_fresh_epoch_behavior(tmp_path, path):
++    loader = _make_loader()
++    trainer = _resume(tmp_path, None, loader, steps=2 * len(loader), total_epochs=3, path=path)
++    assert trainer._dataloader_resume_iterator_finished is None
++    assert trainer.collect() == [(2, batch.tolist()) for batch in _make_loader()]
++
++
++class _StatefulDataset:
++    def __init__(self):
++        self.visits = 0
++
++    def __len__(self):
++        return 11
++
++    def __getitem__(self, index):
++        self.visits += 1
++        return index
++
++    def state_dict(self):
++        return {"visits": self.visits}
++
++    def load_state_dict(self, state):
++        self.visits = state["visits"]
++
++
++def test_boundary_resume_preserves_dataset_state_without_eager_reads(tmp_path):
++    def make():
++        dataset = _StatefulDataset()
++        sampler = RandomSampler(dataset, generator=torch.Generator().manual_seed(42))
++        return StatefulDataLoader(dataset, sampler=sampler, batch_size=3, drop_last=True, num_workers=0)
++
++    loader = make()
++    iterator = iter(loader)
++    for _ in range(len(loader)):
++        next(iterator)
++    state = copy.deepcopy(loader.state_dict())
++    expected_visits = loader.dataset.visits
++    trainer = _resume(tmp_path, state, make(), steps=len(loader), total_epochs=1)
++    assert trainer.train_dataloader.dataset.visits == 0  # load is lazy, no data read
++    assert trainer.collect() == []  # only the exhausted current epoch remains
++    assert trainer.train_dataloader.dataset.visits == expected_visits
++
++
++@pytest.mark.parametrize("workers", [0, 2])
++@pytest.mark.parametrize("state", [{}, [], [1], 1], ids=["empty-dict", "empty-list", "list", "integer"])
++def test_invalid_data_state_rejected_before_loader_mutation(tmp_path, workers, state):
++    loader = _make_loader(workers=workers)
++    iterator = iter(loader)
++    next(iterator)
++    pending_state = loader.next_iter_state
++    rng_before = loader.sampler.generator.get_state().clone()
++    trainer = _prepare_resume(tmp_path, state, loader, steps=1)
++    trainer._dataloader_resume_iterator_finished = False
++    trainer._dataloader_resume_num_yielded = 1
++    with pytest.raises(ValueError, match="Invalid dataloader checkpoint"):
++        trainer._load_checkpoint()
++    assert trainer._dataloader_resume_iterator_finished is None
++    assert trainer._dataloader_resume_num_yielded is None
++    assert loader._iterator is iterator
++    assert loader.next_iter_state is pending_state
++    assert torch.equal(loader.sampler.generator.get_state(), rng_before)
++
++
++# Only torchdata's loader envelope is inspected, not custom state_dict payloads.
++_SAMPLER_FIELDS = [
++    "_index_sampler_state",
++    "_sampler_iter_state",
++    "_sampler_iter_yielded",
++    "_IterableDataset_len_called",
++    "_shared_seed",
++]
++_SINGLE_FIELDS = _SAMPLER_FIELDS + ["_num_yielded", "dataset_state", "fetcher_state", "_iterator_finished"]
++_MULTI_PATHS = [
++    ("_iterator_finished",),
++    ("_steps_since_snapshot",),
++    ("_snapshot",),
++    *(
++        ("_snapshot", key)
++        for key in ["_snapshot_step", "_last_yielded_worker_id", "_main_snapshot", "_worker_snapshots"]
++    ),
++    *(("_snapshot", "_main_snapshot", key) for key in _SAMPLER_FIELDS + ["_num_workers", "_base_seed"]),
++    ("_snapshot", "_worker_snapshots", "worker_0"),
++    *(("_snapshot", "_worker_snapshots", "worker_0", key) for key in ["worker_id", "dataset_state", "fetcher_state"]),
++]
++_MISSING = object()
++_SCHEMA_CASES = [
++    *[(0, (key,), _MISSING) for key in _SINGLE_FIELDS],
++    *[(2, keys, _MISSING) for keys in _MULTI_PATHS],
++    *[(workers, ("_iterator_finished",), value) for workers in [0, 2] for value in [None, 0, 1, "False", [], {}]],
++    *[
++        (workers, keys, value)
++        for workers, keys in [
++            (0, ("_num_yielded",)),
++            (0, ("_sampler_iter_yielded",)),
++            (2, ("_steps_since_snapshot",)),
++            (2, ("_snapshot", "_snapshot_step")),
++            (2, ("_snapshot", "_main_snapshot", "_sampler_iter_yielded")),
++        ]
++        for value in [None, -1, True, 1.5, "1"]
++    ],
++    *[
++        (2, keys, value)
++        for keys in [
++            ("_snapshot",),
++            ("_snapshot", "_main_snapshot"),
++            ("_snapshot", "_worker_snapshots"),
++            ("_snapshot", "_worker_snapshots", "worker_0"),
++        ]
++        for value in [None, [], {}]
++    ],
++    (2, ("_snapshot", "_main_snapshot", "_num_workers"), 1),
++    (2, ("_snapshot", "_main_snapshot", "_num_workers"), True),
++    (2, ("_snapshot", "_worker_snapshots", "worker_0", "worker_id"), 1),
++    (2, ("_snapshot", "_worker_snapshots", "worker_0", "worker_id"), False),
++    (2, ("_snapshot", "_last_yielded_worker_id"), 2),
++    (2, ("_snapshot", "_last_yielded_worker_id"), False),
++]
++
++
++@pytest.fixture(scope="module")
++def valid_data_states():
++    states = {}
++    for workers in [0, 2]:
++        loader = _make_loader(workers=workers)
++        iterator = iter(loader)
++        next(iterator)
++        states[workers] = copy.deepcopy(loader.state_dict())
++        list(iterator)
++    return states
++
++
++@pytest.mark.parametrize("workers,keys,value", _SCHEMA_CASES)
++def test_malformed_data_schema_rejected_before_loader_mutation(tmp_path, valid_data_states, workers, keys, value):
++    state = copy.deepcopy(valid_data_states[workers])
++    container = state
++    for key in keys[:-1]:
++        container = container[key]
++    if value is _MISSING:
++        del container[keys[-1]]
++    else:
++        container[keys[-1]] = value
++    loader = _make_loader(workers=workers)
++    pending_state = copy.deepcopy(valid_data_states[workers])
++    loader.load_state_dict(pending_state)
++    rng_before = loader.sampler.generator.get_state().clone()
++    trainer = _prepare_resume(tmp_path, state, loader, steps=1)
++    trainer._dataloader_resume_iterator_finished = False
++    trainer._dataloader_resume_num_yielded = 1
++    with pytest.raises(ValueError, match="Invalid dataloader checkpoint"):
++        trainer._load_checkpoint()
++    assert trainer._dataloader_resume_iterator_finished is None
++    assert trainer._dataloader_resume_num_yielded is None
++    assert loader._iterator is None
++    assert loader.next_iter_state is pending_state
++    assert torch.equal(loader.sampler.generator.get_state(), rng_before)
++
++
++def test_disabled_resume_clears_stale_iterator_metadata():
++    trainer = _load_cpu_trainer()()
++    trainer.config = SimpleNamespace(trainer=SimpleNamespace(resume_mode="disable"))
++    trainer._dataloader_resume_iterator_finished = False
++    assert trainer._load_checkpoint() == 0
++    assert trainer._dataloader_resume_iterator_finished is None

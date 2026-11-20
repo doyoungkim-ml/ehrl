@@ -1,0 +1,153 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rllm"
+version = "0.3.0.pre"
+description = "Training and evaluating language agents with ACE-RL and RL baselines, built on rLLM"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+license = {file = "LICENSE"}
+dependencies = [
+    "click>=8.0",
+    "rich>=13.9.4",
+    # Core
+    "pydantic",
+    "PyYAML",
+    "Jinja2>=3.1",
+    "openai",
+    "tqdm",
+    "requests",
+    # Data
+    "datasets>=2.20.0",
+    "pillow",
+    "pandas",
+    "polars",
+    "pyarrow",
+    "hydra-core",
+    "codetiming",
+]
+
+[project.optional-dependencies]
+
+# Backend extras provide Python interfaces; the tested VeRL implementation is
+# installed from the checked source contract in compat/verl/manifest.json.
+train = ["rllm[verl]"]
+
+rewards = [
+    "sympy",
+    "pylatexenc",
+    "antlr4-python3-runtime==4.9.3",
+]
+
+dev = [
+    "pytest",
+    "pre-commit",
+    "ruff",
+    "mypy",
+]
+
+verl = [
+    "torch>=2.10.0",
+    "ray",
+    "qwen-vl-utils",
+]
+
+swe = [
+    "swebench",
+]
+
+code-tools = [
+    "e2b_code_interpreter",
+    "together>=1.4",
+]
+
+all = [
+    "rllm[train,rewards]",
+]
+
+[tool.uv]
+override-dependencies = [
+    # GPU-specific torch/vLLM/VeRL pins are installed by scripts/setup_qwen35.sh.
+    "numpy==2.4.4",
+]
+
+[tool.uv.extra-build-dependencies]
+flash-attn = [
+    { requirement = "torch", match-runtime = true },
+]
+
+[tool.ruff]
+line-length = 200  # slightly conservative value, turn this on later.
+
+[tool.ruff.lint]
+isort = {known-first-party = ["rllm"], known-third-party = ["verl"]}
+# c.f. https://github.com/vllm-project/vllm/blob/ce8d6b75fc0586045df75ee1568a5b5f9957251b/pyproject.toml
+select = [
+    # pycodestyle
+    "E",
+    # Pyflakes
+    "F",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # isort
+    "I",
+    "G",
+]
+ignore = [
+    # star imports
+    "F405", "F403",
+    # lambda expression assignment
+    "E731",
+    # Loop control variable not used within loop body
+    "B007",
+    # f-string format
+    "UP032",
+    # `.log()` statement uses f-string
+    "G004",
+    # equality check using x == True
+    "E712",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"rllm/rewards/code_utils/**" = ["ALL"]
+# Prompt / string-heavy files where long lines are intentional
+"rllm/agents/system_prompts.py" = ["E501"]
+"rllm/agents/appworld_react_agents.py" = ["E501"]
+"rllm/agents/code_agent.py" = ["E501"]
+"rllm/agents/frozenlake_agent.py" = ["E501"]
+"rllm/agents/miniwob_agent.py" = ["E501"]
+"rllm/agents/webarena_agent.py" = ["E501"]
+"rllm/rewards/math_reward.py" = ["E501"]
+"tests/agents/test_appworld_agent.py" = ["E501"]
+"tests/rewards/test_code_reward.py" = ["E501"]
+
+[tool.setuptools.packages.find]
+where   = ["."]
+include = ["rllm", "rllm.*"]
+
+[tool.setuptools.package-data]
+rllm = ["trainer/config/*.yaml"]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = true
+check_untyped_defs = true
+follow_imports = "silent"
+exclude = [
+    "verl/.*",
+    "rllm/rewards/code_utils/.*",
+    "rllm/rewards/math_utils/.*",
+    "examples/.*",
+    "scripts/.*",
+    "tests/.*",
+    "docs/.*",
+]

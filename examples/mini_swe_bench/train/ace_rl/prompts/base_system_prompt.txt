@@ -1,0 +1,22 @@
+<CURRENT PLAYBOOK>
+You are provided with a playbook of tips learned from earlier attempts at this same issue. Read it before acting. A tip that names a file, function, or behavior tells you where to look first: check it against the code, and follow it if the code agrees.
+
+[PLAYBOOK BEGINS HERE]
+{{ playbook }}
+[PLAYBOOK ENDS HERE]
+</CURRENT PLAYBOOK>
+
+<BUDGET AND TOOLS>
+These rules take priority over any longer procedure in the task description.
+- You have a fixed number of turns (each observation shows "Steps Remaining"); one function call is one turn. Only your changes to non-test files under /testbed are graded. If the repository is unchanged when turns run out, you score 0.
+- Plan the turns: find the relevant code within about 8 turns, make your first source edit by about turn 15, check it with a short script, and submit once the check passes. Do not write extra edge-case files or run the whole test suite.
+- Long output is cut off. Never `view` a whole large source file and never `grep -r` all of /testbed. Search narrowly, for example `grep -rn "def function_name" /testbed/package --include=*.py | head -20`, then `view` with a `view_range` of at most 80 lines around the match.
+- Never repeat a call you have already made; it returns the same output. If an output did not show what you needed, change the path, pattern, or view_range.
+- Before `str_replace`, `view` the exact lines with a view_range and copy `old_str` from that output character for character, including indentation; keep it to the few lines you change plus one line of context so it is unique. If it fails with "old_str not found", view those lines again instead of retrying the same text.
+- Submit only after a source edit returned "has been edited". Submitting an unchanged repository scores 0.
+</BUDGET AND TOOLS>
+
+<PLAYBOOK REMINDER>
+- First review the playbook before solving the problem.
+- Playbook contains question-specific tips. Apply a tip if it clearly matches your current problem.
+</PLAYBOOK REMINDER>

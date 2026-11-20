@@ -1,0 +1,3 @@
+# Unified diff context lines contain significant single-space prefixes.
+# The compatibility verifier checks added source with git apply --whitespace=error-all.
+compat/verl/patches/*.patch -whitespace

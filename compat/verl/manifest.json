@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "upstream": "https://github.com/verl-project/verl",
+  "base_revision": "bcb638649a50e58494a8ddd92085ad1174f674b8",
+  "patch": {
+    "id": "ppo-dataloader-resume",
+    "path": "patches/0001-ppo-dataloader-resume.patch",
+    "sha256": "69fca97e473d6d673cdd6324f90c5f60ab6ec0eca20fecfbd4e17501f01bf9d3",
+    "files": {
+      "verl/experimental/separation/ray_trainer.py": {
+        "base_sha256": "54ceab03342298c2b799edbf234969dbb9be6c9935ab0de4cb8ed3a497ce5ee9",
+        "patched_sha256": "a3ac542a77a7030c6d9937bef141c2b574248d6cc3b555cc4ecfc6c43d4a4e73",
+        "git_mode": "100644"
+      },
+      "verl/trainer/ppo/ray_trainer.py": {
+        "base_sha256": "85262f63a9b1fb0e645bd79339db4d40997c2a314d37d344f5c48b9f147e7b2a",
+        "patched_sha256": "6f0c0d1eca067eddaf62b0792cfa4a7a2d11411ad190a377d0694aa88869d84c",
+        "git_mode": "100644"
+      },
+      "tests/trainer/ppo/test_dataloader_resume_on_cpu.py": {
+        "base_sha256": null,
+        "patched_sha256": "2622a8fe0191ee189012abb4a112910b29b606bd7937b035bfab2b003cf7b285",
+        "git_mode": "100644"
+      }
+    },
+    "purpose": "Restore raw PPO dataloader state at every checkpoint position; validate state envelopes and expose iterator metadata for controller-aware continuation.",
+    "provenance": {
+      "original_artifact": "runtime-bcb638.patch",
+      "exported_on": "2026-09-05",
+      "upstream_candidate_base": "23af6a7a2e8d6efeeb2adbe5d1689c7a24f503a3",
+      "recorded_cpu_environment": {
+        "python": "3.11",
+        "torch": "2.10.0+cpu",
+        "torchdata": "0.11.0+cpu"
+      },
+      "historical_test_result": "338 passed, 0 skipped at the pinned base, 2026-09-05; historical evidence, not a fresh test run",
+      "deployment": "Held; vendoring this artifact does not install or deploy it",
+      "license": "Apache-2.0 (VeRL); patch retains the test file license header"
+    },
+    "regression_test": "tests/trainer/ppo/test_dataloader_resume_on_cpu.py"
+  },
+  "catalog": [
+    {
+      "id": "vllm-ipc-lifecycle",
+      "implementation": "scripts/patch_verl_zmq_ipc.py",
+      "kind": "validated installed/source patcher; not applied by the resume patch tool",
+      "purpose": "Generate job/rank/process/update-specific IPC socket handles and route HYBRID sleep/wake through EngineCore.",
+      "history": [
+        "02acfff38a3cf33d4f8d32438be6c26c9f9be938",
+        "ad330ec2d455a73015384313c3da0efb5d4c15b5"
+      ],
+      "upstream_reference": "https://github.com/verl-project/verl/pull/6456",
+      "validation": "Hermetic source-preparation tests in tests/compat/test_ipc_patch.py; transformed contents match the legacy patcher on disposable exact-pin source copies. No fresh multi-GPU lifecycle validation.",
+      "removal_condition": "Equivalent behavior exists at the next reviewed pin and concurrent weight-sync plus sleep/wake regression coverage passes"
+    },
+    {
+      "id": "dynamic-batch-rank-sync",
+      "implementation": "rllm/experimental/verl/patch.py:patch_verl_dynamic_batch_sync",
+      "kind": "runtime monkey patch; not applied by this tool",
+      "purpose": "Supply a distributed group to synchronize dynamic microbatch counts across ranks, including the imported dp_actor reference.",
+      "history": [
+        "956062708991190753ace05899ffe1d089df85ec"
+      ],
+      "upstream_reference": "https://github.com/verl-project/verl/issues/5750",
+      "validation": "Code and repository history inspected; WORLD-group default requires topology-specific distributed validation",
+      "removal_condition": "All supported actor paths synchronize microbatch counts with the correct data-parallel group at the next reviewed pin"
+    },
+    {
+      "id": "training-output-postprocess",
+      "implementation": "rllm/experimental/verl/patch.py:patch_verl_training_output_postprocess",
+      "kind": "runtime monkey patch; not applied by this tool",
+      "purpose": "Skip unused nested model-output reconstruction for EngineWorker training while preserving metrics and loss outputs.",
+      "history": [
+        "f3b173d03b81b5da242aed6ba112f659daab4484"
+      ],
+      "validation": "Code and repository history inspected; no fresh GPU or numerical-equivalence validation",
+      "removal_condition": "Upstream supports training without reconstructing unused outputs and log-prob/inference plus training metrics regressions pass"
+    },
+    {
+      "id": "fully-async-actor",
+      "implementation": "rllm/experimental/fully_async/verl_dp_actor.patch",
+      "kind": "experimental algorithm patch; not applied by this tool",
+      "purpose": "Force one minibatch, change loss weighting to response-token proportions, and guard all-masked rollout metrics.",
+      "validation": "Patch inspected; changes optimization semantics and is not part of the base compatibility contract",
+      "removal_condition": "Maintain with the experimental algorithm or replace with a supported actor extension; never apply implicitly to baseline PPO"
+    }
+  ]
+}

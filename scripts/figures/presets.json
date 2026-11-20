@@ -1,0 +1,30 @@
+{
+  "appworld": {
+    "training": "scripts/figures/plot_training.py",
+    "eval": "scripts/figures/plot_eval.py",
+    "turns": "scripts/figures/plot_turns.py",
+    "iterations": "scripts/figures/plot_turns.py",
+    "comparison": "scripts/figures/plot_comparison.py"
+  },
+  "mbpp": {
+    "training": "scripts/figures/plot_training.py",
+    "eval": "scripts/figures/plot_eval.py",
+    "turns": "scripts/figures/plot_turns.py",
+    "iterations": "scripts/figures/plot_turns.py",
+    "comparison": "scripts/figures/plot_comparison.py"
+  },
+  "mini_swe_bench": {
+    "training": "scripts/figures/plot_training.py",
+    "eval": "scripts/figures/plot_eval.py",
+    "turns": "scripts/figures/plot_turns.py",
+    "iterations": "scripts/figures/plot_turns.py",
+    "comparison": "scripts/figures/plot_comparison.py"
+  },
+  "mastermind": {
+    "training": "scripts/figures/plot_training.py",
+    "eval": "scripts/figures/plot_eval.py",
+    "turns": "scripts/figures/plot_turns.py",
+    "iterations": "scripts/figures/plot_turns.py",
+    "comparison": "scripts/figures/plot_comparison.py"
+  }
+}

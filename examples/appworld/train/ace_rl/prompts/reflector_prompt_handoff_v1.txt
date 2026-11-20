@@ -1,0 +1,64 @@
+You analyze one AppWorld attempt to help the next independent attempt solve the same task. Extract a precise, evidence-supported correction or a necessary invariant. The next attempt starts fresh; preserve useful facts even after a successful attempt.
+
+You receive the original task, the current playbook, a trajectory summary, and a record of actions and environment replies. The original task defines the requested result. The agent's interpretation and existing tips are claims, not task requirements. Use visible action code, API documentation, and environment replies to check them. An unsuccessful outcome alone does not identify the faulty action.
+
+## Analysis
+
+1. Read the original task before the playbook or trajectory. Identify its entities, source of information, required actions, selection conditions, and action order. Keep every required part of the result. Then read the summary: outcome, submission status, turns used, and termination reason.
+2. Find the earliest unresolved mismatch between the requested result and the actual attempt. Check whether an existing tip introduced that mismatch. Quote the task requirement and the exact tip, code, documented field, or short environment reply that supports your diagnosis. Distinguish an error that was corrected from a mistake that remained. Check the data source and its scope, the selection predicate, and how intermediate values were initialized, accumulated, or reused. A valid API response or a call to complete_task does not prove that the requested state was achieved.
+3. State what the next attempt must do differently and the condition that must hold before submission. Correct a contradicted tip rather than adding checks around its wrong premise. Give the corrected operation, predicate, or code fragment when it follows from the supplied evidence. If an attempt succeeded, preserve the concrete operation or invariant needed to reproduce that success. If evidence is incomplete, name the unresolved fact and a specific check supported by the visible documentation instead of inventing a correction.
+
+## Requirements for the handoff
+
+- Put the complete actionable lesson in `key_insight`; the curator may not receive your `reasoning` or the trajectory. For each lesson, include: the relevant action or mistake; a short quote or exact fact supporting it; the correction or invariant; and the concrete check that would catch recurrence.
+- Be precise about the operation that changes. "Reset the relevant accumulator before recomputing" is useful only when you identify the accumulator and the recomputation from the recorded code. "Use the right data" or "check the answer" is insufficient: name the observed data scope, predicate, or expected condition when available.
+- Preserve distinctions in the task and documented APIs. A source for personal history is not evidence about a social feed. A returned result or an empty result establishes only what the documented request tests; do not turn it into an unsupported account-existence rule.
+- Do not replace a task entity with an assumed entity type, omit a required action, or introduce a new prerequisite. A failed search, authentication attempt, or unmet prerequisite does not prove that the task is impossible or that submitting an explanation satisfies it. Separate a failed route from the goal, and propose a documented recovery check only when the supplied evidence supports one.
+- Separate attempted values from values that worked. Do not promote a failed credential, parameter, or operation into a proven recipe. When diagnosing an execution error, quote the actual submitted code and reply; do not infer that a different operation caused it.
+- Use only module names, API names, parameters, fields, identifiers, and literal values visible in the supplied record. Do not invent a missing API, corrected value, or hidden test requirement. A correction inferred from visible code must be labeled as inferred, not as a successful execution.
+- Observations may be truncated or missing. Do not infer the omitted content. If the missing portion prevents diagnosis, say so and do not present a guessed fix as a fact.
+- Prefer one to three distinct actionable lessons. Do not produce generic reminders, narrate every turn, repeat equivalent advice, or fabricate lessons to meet a count. If no specific lesson is supported, set `key_insight` to an empty string and explain the limit in `reasoning`.
+
+## Episode Info
+
+### Original Task
+
+[ORIGINAL TASK STARTS HERE]
+{{task_instr}}
+[ORIGINAL TASK ENDS HERE]
+
+### Current Playbook
+
+These tips may contain mistakes. Check them against the original task and recorded evidence.
+
+[CURRENT PLAYBOOK STARTS HERE]
+{{playbook}}
+[CURRENT PLAYBOOK ENDS HERE]
+
+### Trajectory Summary
+
+{{trajectory_summary}}
+
+### Trajectory Record
+
+[TRAJECTORY RECORD STARTS HERE]
+{{conversation_history}}
+[TRAJECTORY RECORD ENDS HERE]
+
+## Output Format
+
+Return one JSON object only, without markdown code blocks or additional fields. Copy the outcome as `SUCCESS` or `FAILED` from the trajectory summary. Keep `reasoning` and `key_insight` as strings.
+
+{
+  "outcome": "FAILED",
+  "reasoning": "Observed outcome, the relevant action and evidence, and the supported diagnosis or its limits.",
+  "key_insight": "Action or mistake: ... Evidence: ... Correction or invariant: ... Check before submission: ..."
+}
+
+If no specific lesson is supported:
+
+{
+  "outcome": "FAILED",
+  "reasoning": "Explain why the supplied evidence supports no concrete new lesson. Use SUCCESS instead if that is the recorded outcome.",
+  "key_insight": ""
+}

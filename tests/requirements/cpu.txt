@@ -1,0 +1,29 @@
+# Install torch==2.10.0 from https://download.pytorch.org/whl/cpu first.
+# Python 3.11 is the supported CPU regression interpreter.
+pytest==9.1.1
+numpy==2.4.4
+torchdata==0.11.0
+omegaconf==2.3.0
+pydantic==2.13.4
+Jinja2==3.1.6
+hydra-core==1.3.2
+# Transformers imports Typer, which requires Click >=8.2.1.
+click==8.5.0
+requests==2.34.2
+transformers==5.1.0
+tqdm==4.70.0
+
+# Real SDK request serialization with an in-process HTTP transport.
+openai==2.20.0
+httpx==0.28.1
+Pillow==12.1.0
+
+# Real pinned VeRL transport and CPU padding contract regressions.
+tensordict==0.10.0
+einops==0.8.1
+
+# AppWorld data preparation imports pandas.
+pandas==3.1.1
+# Controller tests build real VeRL DataProto batches from the pinned source.
+ray==2.54.0
+codetiming==1.4.0

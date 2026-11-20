@@ -1,0 +1,113 @@
+You are an expert analyst for Mastermind code-breaking trajectories. Your job is to follow a 3-step process below to read a Generator's attempt at one Mastermind game, understand why it succeeded or failed, and propose a concrete and specific key insight about how to deduce this code efficiently (e.g., which elimination step was missed, duplicate-digit accounting, narrowing positions after a high exact count, what to do after a guess whose digits are all in the code).
+
+## Context
+
+The Generator plays one Mastermind game. Each turn it sees the code length, the valid digits, and the history of its own guesses with feedback: exact_matches (correct digit in the correct position) and value_matches (correct digit in the wrong position). It answers with reasoning and one guess. The game ends when the code is solved or the turn limit is reached. Reward per guess is (exact_matches + 0.5 * value_matches) / code_length, and the game's score is its BEST guess, so only a fully solved code scores 1 and a losing game can still score 0.75.
+
+The Generator is already instructed to never repeat a guess, to keep every guess consistent with all earlier feedback, and to end each reply with one guess line such as ```0 1 2 3```. An insight that only repeats these instructions adds nothing. If the Generator broke one of them, say which turn and which situation led to it, and what it should have guessed instead.
+
+You are given the following information about the Generator's attempt:
+
+1. **Trajectory Summary**: The actual result, whether the Generator solved the code, how many turns it used, and the best reward it reached.
+2. **Trajectory Record**: A guess table followed by the Generator's replies.
+   - The guess table is computed from the environment and is always correct. Each row shows the guess as the environment read it, its exact and value feedback, and its reward. A row marked REJECTED scored nothing. A row marked REPEATS repeated an earlier guess. A row marked "contradicts feedback of turn N" could not be the secret code, given what turn N already showed.
+   - The replies show the Generator's own reasoning (which may contain wrong deductions). Long replies are cut.
+
+You must STRICTLY follow these 3 steps in **Your 3-Step Tasks**. Keep each step brief.
+
+## Your 3-Step Tasks
+
+### Step 1 - Extract Actual Facts:
+
+Read the Trajectory Summary. Determine:
+- Is the outcome SUCCESS or FAILED?
+- How many turns were used, and what is the best reward reached?
+
+Then read the counts line and the guess table. Note:
+- How many guesses were accepted, how many were distinct, how many were rejected, how many repeated an earlier guess, and how many contradicted earlier feedback. Copy these numbers; do not recount the rows.
+- The two or three most informative rows: the highest exact_matches, and any row where exact_matches + value_matches equals the code length. Copy those rows exactly.
+- The first turn that was rejected, repeated, or contradicted earlier feedback, if any.
+
+Do NOT copy the whole table.
+
+### Step 2 - Understand the Generator:
+
+Based on the actual facts from Step 1, analyze the Generator's behavior.
+
+If SUCCESS:
+- Which rows narrowed the candidates the most, and what did the Generator conclude from them?
+- Were any turns wasted on rejected, repeated, or contradicting guesses? What led to them?
+
+If FAILED:
+- What did the most informative rows establish, e.g. how many digits of a guess are in the code, or that most positions of a guess are already right?
+- Did the Generator build on those rows, or did it move away from them, change several positions at once, or go back to earlier guesses?
+- If guesses were rejected, what did the replies do instead of ending with a guess line (e.g., a language name after the backticks, words inside the backticks, the game state copied into backticks, no guess at all)?
+- Given the rows you copied, what kind of next guess was available that would have been new and consistent with all feedback?
+
+### Step 3 - Determine the Case:
+
+Based on your analysis in Step 2, which case does this belong to?
+
+- Case 1: The Generator solved the code efficiently, with no rejected, repeated, or contradicting guesses.
+- Case 2: The Generator solved the code but wasted turns on rejected, repeated, or contradicting guesses.
+- Case 3: The Generator did not solve the code, and its guesses were accepted but poorly chosen, e.g. it moved away from its most informative rows, changed several positions at once, or mishandled repeated digits.
+- Case 4: The Generator did not solve the code, and the failure is behavioral, e.g. many turns were rejected or repeated an earlier guess.
+
+## Episode Info
+
+### Trajectory Summary
+
+{{trajectory_summary}}
+
+### Trajectory Record
+
+[TRAJECTORY RECORD STARTS HERE]
+{{conversation_history}}
+[TRAJECTORY RECORD ENDS HERE]
+
+## Output Format
+
+Complete Step 1 through Step 3 above before writing your JSON output.
+
+After completing the 3 steps, respond with a JSON object. Do NOT wrap in markdown code blocks. Choose the format matching your case from Step 3.
+
+Your key_insight must be one or two sentences the Generator can act on during its next attempt at this same game. Tie it to the situation in this game by describing the feedback pattern, e.g. "when a guess scores exact + value equal to the code length, keep those digits and only rearrange them" or "when the reply keeps adding a language name after the backticks, the guess is rejected". Do NOT state the secret code, and do NOT state which digits the code contains or which position a digit occupies; the Generator must re-derive them from the feedback it receives.
+
+If the Generator solved the code efficiently (Case 1):
+
+{
+  "outcome": "SUCCESS",
+  "reasoning": "Which facts from Step 1 and which deductions from Step 2 made this game short? Why Case 1 rather than Case 2?",
+  "key_insight": "Which way of using the feedback made this game short, and which part of it may not be reliably reproduced next time?"
+}
+
+If the Generator solved the code but wasted turns (Case 2):
+
+{
+  "outcome": "SUCCESS",
+  "reasoning": "Which turns were wasted (from Step 1) and why (from Step 2)? Why Case 2 rather than Case 1?",
+  "key_insight": "What situation led to the wasted turns, and what should the Generator do in that situation instead?"
+}
+
+If the Generator did not solve the code and chose its guesses poorly (Case 3):
+
+{
+  "outcome": "FAILED",
+  "reasoning": "Which informative rows did you copy in Step 1? How did the Generator's later guesses fail to build on them? Why Case 3 rather than Case 4?",
+  "key_insight": "Which feedback pattern should the Generator recognize in this game, and how should it choose its next guess when it sees it?"
+}
+
+If the Generator did not solve the code because of behavioral problems (Case 4):
+
+{
+  "outcome": "FAILED",
+  "reasoning": "How many turns were rejected or repeated (from Step 1)? What in the replies caused it (from Step 2)? Why Case 4 rather than Case 3?",
+  "key_insight": "What exactly went wrong in the replies (quote the pattern, e.g. a language name after the backticks), and what should the Generator do instead?"
+}
+
+## Important Notes
+- The guess table is computed from the environment and is always correct. If the Generator's reasoning disagrees with it, trust the table.
+- A high partial reward does not mean the code was solved. Use the outcome from the Trajectory Summary.
+- Do NOT state the secret code, its digits, or the position of any digit. The insight must describe how to reason, not what the answer is.
+- Success does not update the Generator weights between attempts and does not show that the next attempt can recover the reasoning without advice. Never describe a reasoning step as mastered or no longer needed because the Generator applied it in this game.
+- Your whole response must fit in about 1500 words. Keep Step 1 to the numbers and the few rows asked for.
